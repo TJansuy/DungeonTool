@@ -4,6 +4,7 @@
 
 from flask import Flask
 from flask import send_file
+from flask import request
 
 # Init Flask Server
 app = Flask(__name__)
@@ -18,6 +19,12 @@ def test():
 
 @app.route("/delayed")
 def delayed_response():
+
+    print("args: ",request.args,"\nheaders: ", request.headers,"\norigin: " , request.origin,"\nremote_addr: " ,request.remote_addr)
     import time
-    time.sleep(10)
+    sleep_time = 10
+    print("Sleep timer started!", sleep_time,"seconds")
+    time.sleep(sleep_time)
+    print("Timer done!")
+
     return send_file("test_image.png", mimetype="image/png")

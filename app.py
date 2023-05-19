@@ -40,8 +40,14 @@ def submit_test():
     import os
     if os.path.isfile(stringHash + ".png"):
         print(stringHash, "found")
+        prompt = request.query_string.decode("ascii")
+        generate(stringHash, prompt)
         return send_file(stringHash + ".png", mimetype="image/png")
     else:
         print("No file exists for", stringHash)
         # Return an image
         return send_file("test_image.png", mimetype="image/png")
+
+def generate(filename, positivePrompt, negativePrompt=None):
+    pass
+

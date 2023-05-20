@@ -40,14 +40,71 @@ def submit_test():
     import os
     if os.path.isfile(stringHash + ".png"):
         print(stringHash, "found")
-        prompt = request.query_string.decode("ascii")
-        generate(stringHash, prompt)
         return send_file(stringHash + ".png", mimetype="image/png")
     else:
         print("No file exists for", stringHash)
+        # No image found
+        prompt = request.query_string.decode("ascii")
+        generate(stringHash, prompt.replace("query=","").replace("+", " ").replace("%2C",","))
         # Return an image
-        return send_file("test_image.png", mimetype="image/png")
+        return send_file( stringHash + ".png", mimetype="image/png")
+
+# Global lock for atomic operations (Kind of sketchy but functional for now)
+lock = False
 
 def generate(filename, positivePrompt, negativePrompt=None):
-    pass
+    # Verify that only one generation happens at a time
+    global lock
+    if lock is not True:
+        lock = True
+    else:
+        import time
+        print("Server busy, waiting")
+        while lock is True:
+            time.sleep(1) # Sleep for 1 second and check again
+        lock = True
+        print("Server Ready, starting")
 
+    from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler, StableDiffusionImg2ImgPipeline, StableDiffusionLatentUpscalePipeline
+    from diffusers.models import AutoencoderKL
+    import torch
+    import requests
+    # from PIL import Image
+
+    if negativePrompt is None:
+        negativePrompt = "blurry"
+
+    guidanceScale = 7
+    inferenceSteps = 100
+
+    repo_id = "Ojimi/anime-kawai-diffusion"
+    #repo_id = "stabilityai/stable-diffusion-2-1"
+    image = False
+    
+    vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse")
+
+    pipe = DiffusionPipeline.from_pretrained(repo_id, vae=vae)
+    #pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+    pipe = pipe.to("cuda")
+    
+    print("Prompt", positivePrompt)
+    positivePrompt = "photo anime, masterpiece, high quality" + positivePrompt
+    image = pipe(positivePrompt, negative_prompt=negativePrompt, guidance_scale=guidanceScale, num_inference_steps=inferenceSteps, width=448, height=448).images[0]
+    #Upscaler
+    #image = pipe(positivePrompt, negative_prompt=negativePrompt, guidance_scale=guidanceScale, num_inference_steps=inferenceSteps, width=448, height=448, output_type="latent").images[0]
+    
+    upscale = False
+    if upscale:            
+        upscale_repo_id = "stabilityai/sd-x2-latent-upscaler"
+        #upscale_repo_id = "stabilityai/stable-diffusion-x4-upscaler"
+
+        upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(upscale_repo_id, torch_dtype=torch.float16)
+        upscaler.to("cuda")
+        upscaler.enable_attention_slicing()
+        #upscaler.enable_vae_tiling()
+
+        image = upscaler(prompt=positivePrompt, image=image, num_inference_steps=inferenceSteps, guidance_scale=guidanceScale).images[0]
+
+
+    image.save(filename +".png")
+    lock = False
